@@ -646,7 +646,8 @@ class FileField(BaseField):
         self.grid_file = grid_file
         if self.grid_file:
             return self.grid_file
-        return GridFSProxy()
+        instance._data.get(self.name) = GridFSProxy()
+        return instance._data.get(self.name)
 
     def __set__(self, instance, value):
         if isinstance(value, file) or isinstance(value, str):
