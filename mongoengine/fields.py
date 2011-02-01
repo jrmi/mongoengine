@@ -16,7 +16,7 @@ import types
 
 
 __all__ = ['StringField', 'IntField', 'FloatField', 'BooleanField',
-           'DateTimeField', 'EmbeddedDocumentField', 'ListField', 'DictField',
+           'DateTimeField', 'EmbeddedDocumentField', 'ListField', 'DictField', 'TypedDictField',
            'ObjectIdField', 'ReferenceField', 'ValidationError',
            'DecimalField', 'URLField', 'GenericReferenceField', 'FileField',
            'BinaryField', 'SortedListField', 'EmailField', 'GeoPointField']
@@ -411,6 +411,91 @@ class DictField(BaseField):
 
     def lookup_member(self, member_name):
         return self.basecls(db_field=member_name)
+
+class TypedDictField(DictField):
+    """A dictionary field that wraps a standard Python dictionary.
+
+    .. versionadded:: 0.5
+    """
+
+    def __init__(self, field, basecls=None, *args, **kwargs):
+        if not isinstance(field, BaseField):
+            raise ValidationError('Argument to TypedDictField constructor must be '
+                                  'a valid field')
+        self.field = field
+        super(TypedDictField, self).__init__(*args, **kwargs)
+        
+    def __get__(self, instance, owner):
+        """Descriptor to automatically dereference references.
+        """
+        if instance is None:
+            # Document class being used rather than a document object
+            return self
+
+        if isinstance(self.field, ReferenceField):
+            referenced_type = self.field.document_type
+            # Get value from document instance if available 
+            value_dict = instance._data.get(self.name)
+            if value_dict:
+                deref_dict = {}
+                for key,value in value_dict.iteritems():
+                    # Dereference DBRefs
+                    if isinstance(value, (pymongo.dbref.DBRef)):
+                        value = _get_db().dereference(value)
+                        deref_dict[key] = referenced_type._from_son(value)
+                    else:
+                        deref_dict[key] = value
+                instance._data[self.name] = deref_list
+
+        if isinstance(self.field, GenericReferenceField):
+            value_dict = instance._data.get(self.name)
+            if value_dict:
+                deref_dict = {}
+                for key,value in value_dict.iteritems():
+                    # Dereference DBRefs
+                    if isinstance(value, (dict, pymongo.son.SON)):
+                        deref_dict[key] = self.field.dereference(value)
+                    else:
+                        deref_dict[key] = value
+                instance._data[self.name] = deref_dict
+
+        return super(TypedDictField, self).__get__(instance, owner)
+
+    def validate(self, value):
+        """Make sure that a dict of valid fields is being used.
+        """
+        if not isinstance(value, dict):
+            raise ValidationError('Only dictionaries may be used in a '
+                                  'DictField')
+        try:
+            [isinstance(item, basestring) for key in value.keys()]
+        except Exception, err:
+            raise ValidationError('Invalid TypedDictField key (%s)' % str(key))
+                
+        try:
+            [self.field.validate(item) for item in value.values()]
+        except Exception, err:
+            raise ValidationError('Invalid TypedDictField item (%s)' % str(item))
+
+        if any(('.' in k or '$' in k) for k in value):
+            raise ValidationError('Invalid dictionary key name - keys may not '
+                                  'contain "." or "$" characters')
+
+    def to_python(self, value):
+        res = {}
+        for key, item in value.iteritems():
+            res[key] = self.field.to_python(item)
+        return res
+
+    def to_mongo(self, value):
+        res = {}
+        for key, item in value.iteritems():
+            res[key] = self.field.to_mongo(item)
+        return res
+
+    def lookup_member(self, member_name):
+        return self.basecls(db_field=member_name)
+
 
 class ReferenceField(BaseField):
     """A reference to a document that will be automatically dereferenced on
