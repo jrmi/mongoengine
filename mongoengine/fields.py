@@ -415,7 +415,6 @@ class DictField(BaseField):
 class TypedDictField(DictField):
     """A dictionary field that wraps a standard Python dictionary.
 
-    .. versionadded:: 0.5
     """
 
     def __init__(self, field, basecls=None, *args, **kwargs):
@@ -467,9 +466,8 @@ class TypedDictField(DictField):
         if not isinstance(value, dict):
             raise ValidationError('Only dictionaries may be used in a '
                                   'DictField')
-        try:
-            [isinstance(item, basestring) for key in value.keys()]
-        except Exception, err:
+
+        if not all([isinstance(key, basestring) for key in value.keys()]):
             raise ValidationError('Invalid TypedDictField key (%s)' % str(key))
                 
         try:
