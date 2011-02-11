@@ -437,7 +437,7 @@ class TypedDictField(DictField):
             value_dict = instance._data.get(self.name)
             if value_dict:
                 deref_dict = {}
-                for key,value in value_dict.iteritems():
+                for key, value in value_dict.iteritems():
                     # Dereference DBRefs
                     if isinstance(value, (pymongo.dbref.DBRef)):
                         value = _get_db().dereference(value)
@@ -450,7 +450,7 @@ class TypedDictField(DictField):
             value_dict = instance._data.get(self.name)
             if value_dict:
                 deref_dict = {}
-                for key,value in value_dict.iteritems():
+                for key, value in value_dict.iteritems():
                     # Dereference DBRefs
                     if isinstance(value, (dict, pymongo.son.SON)):
                         deref_dict[key] = self.field.dereference(value)
@@ -471,7 +471,8 @@ class TypedDictField(DictField):
             raise ValidationError('Invalid TypedDictField key (%s)' % str(key))
                 
         try:
-            [self.field.validate(item) for item in value.values()]
+            for item in value.values():
+               self.field.validate(item)  
         except Exception, err:
             raise ValidationError('Invalid TypedDictField item (%s)' % str(item))
 
@@ -546,7 +547,10 @@ class ReferenceField(BaseField):
                                       'they have been saved to the database')
         else:
             id_ = document
-
+            
+        if document is None:
+            return None
+        
         id_ = id_field.to_mongo(id_)
         collection = self.document_type._meta['collection']
         return pymongo.dbref.DBRef(collection, id_)
@@ -555,7 +559,7 @@ class ReferenceField(BaseField):
         return self.to_mongo(value)
 
     def validate(self, value):
-        assert isinstance(value, (self.document_type, pymongo.dbref.DBRef))
+        assert isinstance(value, (self.document_type, pymongo.dbref.DBRef)) or value is None
 
     def lookup_member(self, member_name):
         return self.document_type._fields.get(member_name)
