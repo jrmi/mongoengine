@@ -342,6 +342,8 @@ class ListField(BaseField):
 
         try:
             [self.field.validate(item) for item in value]
+        except ValidationError, err:
+            raise
         except Exception, err:
             raise ValidationError('Invalid ListField item (%s)' % str(item))
 
@@ -473,6 +475,8 @@ class TypedDictField(DictField):
         try:
             for item in value.values():
                self.field.validate(item)  
+        except ValidationError, err:
+            raise
         except Exception, err:
             raise ValidationError('Invalid TypedDictField item (%s)' % str(item))
 
