@@ -52,9 +52,7 @@ def _get_db(reconnect=False):
     return _db[identity]
 
 def get_identity():
-    identity = multiprocessing.current_process()._identity
-    identity = 0 if not identity else identity[0]
-    return identity
+    return multiprocessing.current_process().pid
     
 def connect(db, username=None, password=None, **kwargs):
     """Connect to the database specified by the 'db' argument. Connection 
