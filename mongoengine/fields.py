@@ -8,6 +8,7 @@ import pymongo
 import pymongo.dbref
 import pymongo.son
 import pymongo.binary
+import pymongo.objectid
 import datetime
 import decimal
 import gridfs
@@ -17,7 +18,7 @@ import types
 
 __all__ = ['StringField', 'IntField', 'FloatField', 'BooleanField',
            'DateTimeField', 'EmbeddedDocumentField', 'ListField', 'DictField', 'TypedDictField',
-           'ObjectIdField', 'ReferenceField', 'ValidationError',
+           'ObjectIdField', 'StrictReferenceField', 'ReferenceField', 'ValidationError',
            'DecimalField', 'URLField', 'GenericReferenceField', 'FileField',
            'BinaryField', 'SortedListField', 'EmailField', 'GeoPointField']
 
@@ -297,6 +298,21 @@ class ListField(BaseField):
         if instance is None:
             # Document class being used rather than a document object
             return self
+        
+        if isinstance(self.field, StrictReferenceField):
+            referenced_type = self.field.document_type
+            # Get value from document instance if available 
+            value_list = instance._data.get(self.name)
+            if value_list:
+                deref_list = []
+                for value in value_list:
+                    # Dereference DBRefs
+                    if isinstance(value, pymongo.objectid.ObjectId):
+                        value = referenced_type.objects.with_id(value)
+                        deref_list.append(value)
+                    else:
+                        deref_list.append(value)
+                instance._data[self.name] = deref_list
 
         if isinstance(self.field, ReferenceField):
             referenced_type = self.field.document_type
@@ -433,6 +449,22 @@ class TypedDictField(DictField):
             # Document class being used rather than a document object
             return self
 
+        
+        if isinstance(self.field, StrictReferenceField):
+            referenced_type = self.field.document_type
+            # Get value from document instance if available 
+            value_dict = instance._data.get(self.name)
+            if value_dict:
+                deref_dict = {}
+                for key, value in value_dict.iteritems():
+                    # Dereference DBRefs
+                    if isinstance(value, pymongo.objectid.ObjectId):
+                        value = referenced_type.objects.with_id(value)
+                        deref_dict[key] = value
+                    else:
+                        deref_dict[key] = value
+                instance._data[self.name] = deref_list
+
         if isinstance(self.field, ReferenceField):
             referenced_type = self.field.document_type
             # Get value from document instance if available 
@@ -498,6 +530,73 @@ class TypedDictField(DictField):
 
     def lookup_member(self, member_name):
         return self.basecls(db_field=member_name)
+
+class StrictReferenceField(BaseField):
+    """A reference to a document that will be automatically dereferenced on
+    access (lazily).
+    """
+
+    def __init__(self, document_type, **kwargs):
+        if not isinstance(document_type, basestring):
+            if not issubclass(document_type, (Document, basestring)):
+                raise ValidationError('Argument to StrictReferenceField constructor '
+                                      'must be a document class or a string')
+        self.document_type_obj = document_type
+        super(StrictReferenceField, self).__init__(**kwargs)
+
+    @property
+    def document_type(self):
+        if isinstance(self.document_type_obj, basestring):
+            if self.document_type_obj == RECURSIVE_REFERENCE_CONSTANT:
+                self.document_type_obj = self.owner_document
+            else:
+                self.document_type_obj = get_document(self.document_type_obj)
+        return self.document_type_obj
+
+    def __get__(self, instance, owner):
+        """Descriptor to allow lazy dereferencing.
+        """
+        if instance is None:
+            # Document class being used rather than a document object
+            return self
+
+        # Get value from document instance if available
+        value = instance._data.get(self.name)
+        # Dereference collectin refs
+        if isinstance(value, pymongo.objectid.ObjectId):
+            value = self.document_type.objects.with_id(value)
+            if value is not None:
+                instance._data[self.name] = self.document_type._from_son(value)
+
+        return super(StrictReferenceField, self).__get__(instance, owner)
+
+    def to_mongo(self, document):
+        id_field_name = self.document_type._meta['id_field']
+        id_field = self.document_type._fields[id_field_name]
+
+        if document is None:
+            return None
+        
+        if isinstance(document, Document):
+            # We need the id from the saved object to create the DBRef
+            id_ = document.id
+            if id_ is None:
+                raise ValidationError('You can only reference documents once '
+                                      'they have been saved to the database')
+        else:
+            id_ = document
+              
+        id_ = id_field.to_mongo(id_)
+        return id_
+
+    def prepare_query_value(self, op, value):
+        return self.to_mongo(value)
+
+    def validate(self, value):
+        assert isinstance(value, (self.document_type, pymongo.objectid.ObjectId)) or value is None
+
+    def lookup_member(self, member_name):
+        return self.document_type._fields.get(member_name)
 
 
 class ReferenceField(BaseField):
