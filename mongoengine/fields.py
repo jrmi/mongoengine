@@ -566,7 +566,7 @@ class StrictReferenceField(BaseField):
         if isinstance(value, pymongo.objectid.ObjectId):
             value = self.document_type.objects.with_id(value)
             if value is not None:
-                instance._data[self.name] = self.document_type._from_son(value)
+                instance._data[self.name] = value
 
         return super(StrictReferenceField, self).__get__(instance, owner)
 
