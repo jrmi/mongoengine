@@ -565,8 +565,7 @@ class StrictReferenceField(BaseField):
         # Dereference collectin refs
         if isinstance(value, pymongo.objectid.ObjectId):
             value = self.document_type.objects.with_id(value)
-            if value is not None:
-                instance._data[self.name] = value
+            instance._data[self.name] = value 
 
         return super(StrictReferenceField, self).__get__(instance, owner)
 
@@ -635,7 +634,9 @@ class ReferenceField(BaseField):
             value = _get_db().dereference(value)
             if value is not None:
                 instance._data[self.name] = self.document_type._from_son(value)
-
+            else:
+                instance._data[self.name] = None
+                
         return super(ReferenceField, self).__get__(instance, owner)
 
     def to_mongo(self, document):
