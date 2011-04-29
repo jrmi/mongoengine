@@ -2,6 +2,7 @@ from base import BaseField, ObjectIdField, ValidationError, get_document
 from document import Document, EmbeddedDocument
 from connection import _get_db
 from operator import itemgetter
+import urlparse
 
 import re
 import pymongo
@@ -84,21 +85,16 @@ class URLField(StringField):
     .. versionadded:: 0.3
     """
 
-    URL_REGEX = re.compile(
-        r'^https?://'
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'
-        r'localhost|'
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
-        r'(?::\d+)?'
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE
-    )
-
     def __init__(self, verify_exists=False, **kwargs):
         self.verify_exists = verify_exists
         super(URLField, self).__init__(**kwargs)
 
     def validate(self, value):
-        if not URLField.URL_REGEX.match(value):
+        try:
+            urltuple = urlparse.urlparse(value)
+            assert all([urltuple.scheme, urltuple.netloc])
+            assert urltuple.scheme in ['http', 'https'] 
+        except:
             raise ValidationError('Invalid URL: %s' % value)
 
         if self.verify_exists:
